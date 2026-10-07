@@ -903,6 +903,23 @@ class LCMEngine(CompactionMixin, ResetStateMixin, ReconcileMixin, AuxiliarySessi
             )
         return raw_context_length, None, ""
 
+    @staticmethod
+    def _coerce_max_tokens(value: Any) -> int | None:
+        """Normalize max_tokens to a positive int, or None for "no reservation"."""
+        try:
+            ivalue = int(value) if value is not None else 0
+        except (TypeError, ValueError):
+            return None
+        return ivalue if ivalue > 0 else None
+
+    # Same normalization: a threshold_tokens cap is a positive int, or None for "no cap".
+    # Hermes core's tui_gateway.session_compression calls ``_coerce_threshold_tokens_cap`` on the
+    # context engine, but the ContextEngine ABC does not define it and core's ContextCompressor
+    # only carries it as an alias of ``_coerce_max_tokens``. Without it here, applying a live
+    # ``compression.threshold_tokens`` edit raises AttributeError (caught, so the cap and the
+    # cached-trigger invalidation are silently skipped).
+    _coerce_threshold_tokens_cap = _coerce_max_tokens
+
     def _effective_threshold_tokens(self, context_threshold_tokens: int) -> int:
         """Return the host-visible preflight trigger token count.
 
