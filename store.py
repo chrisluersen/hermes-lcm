@@ -450,9 +450,18 @@ class MessageStore:
             "observed_at_source",
             "ALTER TABLE messages ADD COLUMN observed_at_source TEXT",
         )
-        self._conn.execute(
-            "UPDATE messages SET ingested_at = timestamp WHERE ingested_at IS NULL"
-        )
+        # Backfill ONLY when the column was just created. `columns` is the
+        # pre-migration PRAGMA snapshot, so when ingested_at already exists the
+        # backfill has already run and this statement can only match zero rows --
+        # but it still full-scans the entire messages table to discover that
+        # (measured 251s on a 2.47 GB / 669k-row lcm.db, paid on EVERY plugin
+        # load, which is why `hermes plugins list` took ~18-23s on this host).
+        # append() always writes ingested_at, so no new NULLs can appear once
+        # the column exists and skipping is safe.
+        if "ingested_at" not in columns:
+            self._conn.execute(
+                "UPDATE messages SET ingested_at = timestamp WHERE ingested_at IS NULL"
+            )
 
     # -- Write operations ---------------------------------------------------
 
